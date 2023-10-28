@@ -1,74 +1,131 @@
-import React, { Component } from 'react';
+/* eslint-disable no-param-reassign */
+/* eslint-disable no-underscore-dangle */
+import React, { useCallback, useEffect, useRef } from 'react';
 import PropTypes from 'prop-types';
 import * as d3 from 'd3';
 
-export default class BubbleChart extends Component {
-  constructor(props) {
-    super(props);
-    
-    this.renderChart = this.renderChart.bind(this);
-    this.renderBubbles = this.renderBubbles.bind(this);
-    this.renderLegend = this.renderLegend.bind(this);
-    this.svg = React.createRef();
-  }
+const RandomKeywordBubbles = ({
+  width,
+  height,
+  data,
+  overflow,
+  graph,
+  padding,
+  labelFont,
+  valueFont,
+  bubbleClickFunc,
+}) => {
+  const svg = useRef();
+  const renderBubbles = useCallback((width, nodes, color) => {
+    const bubbleChart = d3.select(svg.current).append('g')
+      .attr('class', 'bubble-chart')
+      .attr('transform', () => `translate(${width * graph.offsetX},${width * graph.offsetY})`);
 
-  componentDidMount() {
-    this.renderChart();
-  }
+    const node = bubbleChart.selectAll('.node')
+      .data(nodes)
+      .enter().append('g')
+      .attr('class', 'node')
+      .attr('transform', (d) => `translate(${d.x},${d.y})`)
+      .on('click', (event, d) => {
+        bubbleClickFunc(d.label);
+      });
 
-  componentDidUpdate() {
-    const {
-      width,
-      height,
-    } = this.props;
-    if (width !== 0 && height !== 0) {
-      this.renderChart();
-    }
-  }
+    node.append('circle')
+      .attr('id', (d) => d.id)
+      .attr('r', (d) => d.r - (d.r * 0.2))
+      .style('fill', (d) => (d.data.color ? d.data.color : color(nodes.indexOf(d))))
+      .style('z-index', 1)
+      .on('mouseover', (event, d) => {
+        d3.select(event.currentTarget).transition()
+          .ease(d3.easeElastic)
+          .duration(1000)
+          .attr('r', d.r * 1.04);
+      })
+      .on('mouseout', (event, d) => {
+        d3.select(event.currentTarget).transition()
+        .ease(d3.easeElastic)
+        .duration(1000)
+        .attr('r', d.r - (d.r * 0.2));
+      });
 
-  render() {
-    const {
-      width,
-      height,
-    } = this.props;
-    return (
-      <svg width={width} height={height} ref={this.svg} />
-    )
-  }
+    node.append('clipPath')
+      .attr('id', (d) => `clip-${d.id}`)
+      .append('use')
+      .attr('xlink:href', (d) => `#${d.id}`);
 
-  renderChart() {
-    const {
-      overflow,
-      graph,
-      data,
-      height,
-      width,
-      padding,
-      showLegend,
-      legendPercentage,
-    } = this.props;
-    // Reset the svg element to a empty state.
-    this.svg.current.innerHTML = '';
+    // node.append('text')
+    //   .attr('class', 'value-text')
+    //   .style('font-size', `${valueFont.size}px`)
+    //   .attr('clip-path', (d) => `url(#clip-${d.id})`)
+    //   .style('font-weight', () => (valueFont.weight ? valueFont.weight : 600))
+    //   .style('font-family', valueFont.family)
+    //   .style('fill', () => (valueFont.color ? valueFont.color : '#000'))
+    //   .style('stroke', () => (valueFont.lineColor ? valueFont.lineColor : '#000'))
+    //   .style('stroke-width', () => (valueFont.lineWeight ? valueFont.lineWeight : 0))
+    //   .text((d) => d.value);
+
+    node.append('text')
+      .attr('class', 'label-text')
+      .style('font-size', `${labelFont.size}px`)
+      .attr('clip-path', (d) => `url(#clip-${d.id})`)
+      .style('font-weight', () => (labelFont.weight ? labelFont.weight : 600))
+      .style('font-family', labelFont.family)
+      .style('fill', () => (labelFont.color ? labelFont.color : '#000'))
+      .style('stroke', () => (labelFont.lineColor ? labelFont.lineColor : '#000'))
+      .style('stroke-width', () => (labelFont.lineWeight ? labelFont.lineWeight : 0))
+      .text((d) => d.label)
+      .on('mouseover', (event, d) => {
+        d3.select(`#${d.id}`).transition()
+        .ease(d3.easeElastic)
+        .duration(1000)
+        .attr('r', d.r * 1.04);;
+      })
+
+    // Center the texts inside the circles.
+    d3.selectAll('.label-text')
+      // .attr('dominant-baseline', 'middle')
+      .attr('text-anchor', 'middle')
+      .style('opacity', (d) => {
+        const textWidth = d.label.length * 10;
+        d.hideLabel = textWidth * 1.05 > (d.r * 2);
+        return d.hideLabel ? 0 : 1;
+      })
+      .attr('y', () => labelFont.size / 2);
+
+    // Center the texts inside the circles.
+    // d3.selectAll('.value-text')
+    //   .attr('text-anchor', 'middle')
+    //   .attr('y', (d) => {
+    //     if (d.hideLabel) {
+    //       return valueFont.size / 3;
+    //     }
+    //     return -valueFont.size * 0.5;
+    //   });
+
+    node.append('title')
+      .text((d) => d.label);
+  }, [bubbleClickFunc, graph.offsetX, graph.offsetY, labelFont, valueFont]);
+
+  const renderChart = useCallback(() => {
+    svg.current.innerHTML = '';
     // Allow bubbles overflowing its SVG container in visual aspect if props(overflow) is true.
-    if (overflow)
-      this.svg.current.style.overflow = "visible";
+    if (overflow) {
+      svg.current.style.overflow = 'visible';
+    }
 
-    const bubblesWidth = showLegend ? width * (1 - (legendPercentage / 100)) : width;
-    const legendWidth = width - bubblesWidth;
     const color = d3.scaleOrdinal(d3.schemeCategory10);
-
     const pack = d3.pack()
-      .size([bubblesWidth * graph.zoom, bubblesWidth * graph.zoom])
+      .size([width * graph.zoom, width * graph.zoom])
       .padding(padding);
 
     // Process the data to have a hierarchy structure;
     const root = d3.hierarchy({ children: data })
-      .sum(function (d) { return d.value; })
-      .sort(function (a, b) { return b.value - a.value; })
+      .sum((d) => d.value)
+      .sort((a, b) => b.value - a.value)
       .each((d) => {
         if (d.data.label) {
           d.label = d.data.label;
-          d.id = d.data.label.toLowerCase().replace(/ |\//g, "-");
+          d.id = d.data.label.toLowerCase().replace(/ |\//g, '-');
         }
       });
 
@@ -76,198 +133,21 @@ export default class BubbleChart extends Component {
     const nodes = pack(root).leaves();
 
     // Call to the function that draw the bubbles.
-    this.renderBubbles(bubblesWidth, nodes, color);
-    // Call to the function that draw the legend.
-    if (showLegend) {
-      this.renderLegend(legendWidth, height, bubblesWidth, nodes, color);
+    renderBubbles(width, nodes, color);
+  }, [overflow, width, graph, padding, data, renderBubbles]);
+
+  useEffect(() => {
+    if (width !== 0 && height !== 0) {
+      renderChart();
     }
-  }
+  }, [width, height, data, graph, renderChart]);
 
-  renderBubbles(width, nodes, color) {
-    const {
-      graph,
-      data,
-      bubbleClickFunc,
-      valueFont,
-      labelFont,
-    } = this.props;
+  return (
+    <svg width={width} height={height} ref={svg} />
+  );
+};
 
-    const bubbleChart = d3.select(this.svg.current).append("g")
-      .attr("class", "bubble-chart")
-      .attr("transform", function (d) { return "translate(" + (width * graph.offsetX) + "," + (width * graph.offsetY) + ")"; });;
-
-    const node = bubbleChart.selectAll(".node")
-      .data(nodes)
-      .enter().append("g")
-      .attr("class", "node")
-      .attr("transform", function (d) { return "translate(" + d.x + "," + d.y + ")"; })
-      .on("click", function (d) {
-        bubbleClickFunc(d.target.__data__.data.label);
-      });
-
-    node.append("circle")
-      .attr("id", function (d) { return d.id; })
-      .attr("r", function (d) { return d.r - (d.r * 0.04); })
-      .style("fill", function (d) { return d.data.color ? d.data.color : color(nodes.indexOf(d)); })
-      .style("z-index", 1)
-      .on('mouseover', function (d) {
-        d3.select(this).attr("r", d.target.__data__.r * 1.04);
-      })
-      .on('mouseout', function (d) {
-        const r = d.target.__data__.r - (d.target.__data__.r * 0.04);
-        d3.select(this).attr("r", r);
-      });
-
-    node.append("clipPath")
-      .attr("id", function (d) { return "clip-" + d.id; })
-      .append("use")
-      .attr("xlink:href", function (d) { return "#" + d.id; });
-
-    node.append("text")
-      .attr("class", "value-text")
-      .style("font-size", `${valueFont.size}px`)
-      .attr("clip-path", function (d) { return "url(#clip-" + d.id + ")"; })
-      .style("font-weight", (d) => {
-        return valueFont.weight ? valueFont.weight : 600;
-      })
-      .style("font-family", valueFont.family)
-      .style("fill", () => {
-        return valueFont.color ? valueFont.color : '#000';
-      })
-      .style("stroke", () => {
-        return valueFont.lineColor ? valueFont.lineColor : '#000';
-      })
-      .style("stroke-width", () => {
-        return valueFont.lineWeight ? valueFont.lineWeight : 0;
-      })
-      .text(function (d) { return d.value; });
-
-    node.append("text")
-      .attr("class", "label-text")
-      .style("font-size", `${labelFont.size}px`)
-      .attr("clip-path", function (d) { return "url(#clip-" + d.id + ")"; })
-      .style("font-weight", (d) => {
-        return labelFont.weight ? labelFont.weight : 600;
-      })
-      .style("font-family", labelFont.family)
-      .style("fill", () => {
-        return labelFont.color ? labelFont.color : '#000';
-      })
-      .style("stroke", () => {
-        return labelFont.lineColor ? labelFont.lineColor : '#000';
-      })
-      .style("stroke-width", () => {
-        return labelFont.lineWeight ? labelFont.lineWeight : 0;
-      })
-      .text(function (d) {
-        return d.label;
-      });
-
-
-    // Center the texts inside the circles.
-    d3.selectAll(".label-text").attr("x", function (d) {
-      const self = d3.select(this);
-      const width = self.node().getBBox().width;
-      return -(width / 2);
-    })
-      .style("opacity", function (d) {
-        const self = d3.select(this);
-        const width = self.node().getBBox().width;
-        d.hideLabel = width * 1.05 > (d.r * 2);
-        return d.hideLabel ? 0 : 1;
-      })
-      .attr("y", function (d) {
-        return labelFont.size / 2
-      })
-
-    // Center the texts inside the circles.
-    d3.selectAll(".value-text").attr("x", function (d) {
-      const self = d3.select(this);
-      const width = self.node().getBBox().width;
-      return -(width / 2);
-    })
-      .attr("y", function (d) {
-        if (d.hideLabel) {
-          return valueFont.size / 3;
-        } else {
-          return -valueFont.size * 0.5;
-        }
-      });
-
-    node.append("title")
-      .text(function (d) { return d.label; });
-  }
-
-  renderLegend(width, height, offset, nodes, color) {
-    const {
-      data,
-      legendClickFunc,
-      legendFont,
-    } = this.props;
-    const bubble = d3.select('.bubble-chart');
-    const bubbleHeight = bubble.node().getBBox().height;
-
-    const legend = d3.select(this.svg.current).append("g")
-      .attr("transform", function () { return `translate(${offset},${(bubbleHeight) * 0.05})`; })
-      .attr("class", "legend");
-
-    let textOffset = 0;
-    const texts = legend.selectAll(".legend-text")
-      .data(nodes)
-      .enter()
-      .append("g")
-      .attr("transform", (d, i) => {
-        const offset = textOffset;
-        textOffset += legendFont.size + 10;
-        return `translate(0,${offset})`;
-      })
-      .on('mouseover', function (d) {
-        d3.select('#' + d.target.__data__.id).attr("r", d.target.__data__.r * 1.04);
-      })
-      .on('mouseout', function (d) {
-        const r = d.target.__data__.r - (d.target.__data__.r * 0.04);
-        d3.select('#' + d.target.__data__.id).attr("r", r);
-      })
-      .on("click", function (d) {
-        legendClickFunc(d.target.__data__.label);
-      });;
-
-    texts.append("rect")
-      .attr("width", 30)
-      .attr("height", legendFont.size)
-      .attr("x", 0)
-      .attr("y", -legendFont.size)
-      .style("fill", "transparent");
-
-    texts.append("rect")
-      .attr("width", legendFont.size)
-      .attr("height", legendFont.size)
-      .attr("x", 0)
-      .attr("y", -legendFont.size)
-      .style("fill", function (d) { return d.data.color ? d.data.color : color(nodes.indexOf(d)); });
-
-    texts.append("text")
-      .style("font-size", `${legendFont.size}px`)
-      .style("font-weight", (d) => {
-        return legendFont.weight ? legendFont.weight : 600;
-      })
-      .style("font-family", legendFont.family)
-      .style("fill", () => {
-        return legendFont.color ? legendFont.color : '#000';
-      })
-      .style("stroke", () => {
-        return legendFont.lineColor ? legendFont.lineColor : '#000';
-      })
-      .style("stroke-width", () => {
-        return legendFont.lineWeight ? legendFont.lineWeight : 0;
-      })
-      .attr("x", (d) => { return legendFont.size + 10 })
-      .attr("y", 0)
-      .text((d) => { return d.label });
-  }
-}
-
-BubbleChart.propTypes = {
+RandomKeywordBubbles.propTypes = {
   overflow: PropTypes.bool,
   graph: PropTypes.shape({
     zoom: PropTypes.number,
@@ -276,29 +156,31 @@ BubbleChart.propTypes = {
   }),
   width: PropTypes.number,
   height: PropTypes.number,
+  data: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string,
+    value: PropTypes.number,
+  })),
   padding: PropTypes.number,
-  showLegend: PropTypes.bool,
-  legendPercentage: PropTypes.number,
-  legendFont: PropTypes.shape({
-    family: PropTypes.string,
-    size: PropTypes.number,
-    color: PropTypes.string,
-    weight: PropTypes.string,
-  }),
   valueFont: PropTypes.shape({
     family: PropTypes.string,
     size: PropTypes.number,
     color: PropTypes.string,
     weight: PropTypes.string,
+    lineColor: PropTypes.string,
+    lineWeight: PropTypes.number,
   }),
   labelFont: PropTypes.shape({
     family: PropTypes.string,
     size: PropTypes.number,
     color: PropTypes.string,
     weight: PropTypes.string,
+    lineColor: PropTypes.string,
+    lineWeight: PropTypes.number,
   }),
-}
-BubbleChart.defaultProps = {
+  bubbleClickFunc: PropTypes.func,
+};
+
+RandomKeywordBubbles.defaultProps = {
   overflow: false,
   graph: {
     zoom: 1.1,
@@ -307,27 +189,25 @@ BubbleChart.defaultProps = {
   },
   width: 1000,
   height: 800,
+  data: [],
   padding: 0,
-  showLegend: true,
-  legendPercentage: 20,
-  legendFont: {
-    family: 'Arial',
-    size: 12,
-    color: '#000',
-    weight: 'bold',
-  },
   valueFont: {
     family: 'Arial',
     size: 16,
     color: '#fff',
     weight: 'bold',
+    lineColor: '#000',
+    lineWeight: 0,
   },
   labelFont: {
     family: 'Arial',
     size: 11,
     color: '#fff',
     weight: 'normal',
+    lineColor: '#000',
+    lineWeight: 0,
   },
-  bubbleClickFunc: (label) => { console.log(`Bubble ${label} is clicked ...`) },
-  legendClickFunc: (label) => { console.log(`Legend ${label} is clicked ...`) }
-}
+  bubbleClickFunc: (label) => { console.log(`Bubble ${label} is clicked ...`); },
+};
+
+export default RandomKeywordBubbles;

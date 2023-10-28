@@ -1,4 +1,14 @@
 .App {
+  display: flex;
+  flex-direction: row;
+  gap: 50px;
+  justify-content: center;
+}
+
+.team {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
   text-align: center;
 }
 
